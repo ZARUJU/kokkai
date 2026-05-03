@@ -1,0 +1,1 @@
+"""kokkai application package."""
