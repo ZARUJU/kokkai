@@ -18,11 +18,11 @@
 
 - Python 3.11+
 - FastAPI
+- SQLite
 - SQLAlchemy
 - pytest
 - python-dotenv
 - HTML 解析ライブラリ
-- JSON API クライアント
 - スクレイピング用ライブラリ
 
 ## ディレクトリ構成案
@@ -37,13 +37,18 @@
 ├── src/
 │   └── kokkai/
 │       ├── api/          # FastAPI のルーター、スキーマ、依存関係
+│       │   └── routes/       # API エンドポイント
+│       ├── db/           # SQLAlchemy の Base、Engine、Session 管理
 │       ├── ingest/       # 外部データの取得、解析、正規化、登録
+│       │   ├── documents.py  # 取得結果の共通型
+│       │   ├── http.py       # HTTP 取得の共通処理
+│       │   ├── pipeline.py   # pipeline の共通型
 │       │   ├── sources/      # データソースごとの取得処理
 │       │   ├── parsers/      # HTML や JSON レスポンスの解析処理
 │       │   ├── normalizers/  # 共通データモデルへの変換
 │       │   └── pipelines/    # 取得から DB 登録までの一連の処理
-│       ├── models/       # DB モデルとドメインモデル
-│       ├── repositories/ # DB 読み書き
+│       ├── models/       # SQLAlchemy モデルとドメインモデル
+│       ├── repositories/ # SQLAlchemy 経由の DB 読み書き
 │       └── settings.py   # 環境変数から設定を読み込む
 ├── tests/
 └── README.md
@@ -61,10 +66,30 @@ uv run python scripts/ingest.py
 uv run pytest
 ```
 
+## API
+
+会期一覧を取り込んだあと、API から取得できます。
+
+```bash
+uv run python scripts/ingest.py
+uv run python api.py
+```
+
+| メソッド | パス                      | 内容                   |
+| -------- | ------------------------- | ---------------------- |
+| `GET`    | `/health`                 | ヘルスチェック         |
+| `GET`    | `/diet-sessions`          | 会期一覧               |
+| `GET`    | `/diet-sessions/{number}` | 指定した国会回次の会期 |
+
+## データソース
+
+取得元と取得項目は [docs/data-sources.md](docs/data-sources.md) に記載します。
+新しいデータソースを追加するときの流れは [docs/ingest-flow.md](docs/ingest-flow.md) に記載します。
+
 ## 環境変数
 
 ローカル開発では `.env` に環境変数を記述します。`.env` は Git 管理せず、共有用の初期値は `.env.example` に記載します。
 
-| 変数名 | 用途 | 例 |
-| --- | --- | --- |
+| 変数名         | 用途                          | 例                                |
+| -------------- | ----------------------------- | --------------------------------- |
 | `DATABASE_URL` | アプリケーションが接続する DB | `sqlite:///./data/kokkai.sqlite3` |
