@@ -49,6 +49,13 @@ def upsert_many(session: Session, sessions: list[DietSession], source_url: str) 
     session.execute(statement)
 
 
+def latest_session_numbers(session: Session, limit: int = 2) -> list[int]:
+    rows = session.scalars(
+        select(DietSessionModel.number).order_by(DietSessionModel.number.desc()).limit(limit)
+    ).all()
+    return [int(n) for n in rows]
+
+
 def list_all(session: Session) -> list[dict[str, object]]:
     rows = session.scalars(select(DietSessionModel).order_by(DietSessionModel.number.desc())).all()
     return [to_dict(row) for row in rows]

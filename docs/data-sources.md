@@ -44,7 +44,9 @@
 - 主キー:
   - 経過情報 URL の識別子
 - 更新方針:
-  - 手動または定期バッチで対象回次を再取得し、経過情報 URL の識別子で upsert する。
+  - 既定では、`shugiin_sessions` で保存した国会回次のうち番号が新しいものから最大 2 件だけを対象に再取得し、経過情報 URL の識別子で upsert する（経過・本文が動きやすい最新会期とその直前を定期更新する想定）。
+  - 環境変数 `SHUGIIN_BILL_SESSIONS` にカンマ区切りで国会回次を指定すると、そのリストが優先される（過去会期のまとめ取りや検証用）。
+  - 会期一覧が未投入の DB ではフォールバックとしてコード内の既定回次（単一会期）を使うため、本番の定期実行では先に `shugiin_sessions` を走らせることが望ましい。
 - 保存方針:
   - 解析後の議案一覧データを SQLite に保存する。
   - 経過情報は議案ごとの項目・内容として保存し、API では日付、委員会、結果、提出者などに構造化して返す。
@@ -77,9 +79,14 @@
   - 発言: `speech_id`
   - 議題行: `{issue_id}:topic:{順序}`（同一行に `bill_source_ids_json`: 紐づく議案 `source_id` の JSON 配列）
 - 更新方針:
-  - `meeting_list` で対象回次の `issue_id` をページング取得し、各 ID を `meeting` で再取得して upsert する。
+  - 対象国会回次は既定では `shugiin_sessions` で保存した番号のうち新しい方から最大 2 件の範囲（API の `sessionFrom` にその最小、`sessionTo` にその最大）とし、`meeting_list` で `issue_id` をページング取得し、各 ID を `meeting` で再取得して upsert する。
+  - 環境変数 `KOKKAI_MEETING_SESSIONS` にカンマ区切りで国会回次を指定すると、その値の最小〜最大が API の回次範囲として優先される（一覧で複数会期をまたぐ取得や検証用）。
+  - 会期一覧が未投入の DB ではフォールバックとして単一会期（コード内既定）に縮れるため、本番の定期実行では先に `shugiin_sessions` を走らせることが望ましい。
+  - 公開済み会議録は不変とみなし、DB に同一 `issue_id` が既にある場合はデフォルトで API 再取得を省略する（議案 ingest を後から足した場合などで議題紐付けをやり直したいときは `KOKKAI_MEETING_REINGEST` を真に設定して再取得する）。
   - 公式利用条件に従い、リクエスト間に数秒空ける。
 - 保存方針:
   - 会議録ヘッダ・抽出メタデータ・発言全文・議題・発言者一覧を SQLite に保存する。
   - API リクエスト URL（例: `.../api/meeting?issueID=...`）と取得日時は `meeting_records` のみに保持する（発言・議題・発言者一覧の子行には重複させない）。
   - `KOKKAI_MEETING_INGEST_LIMIT` を設定すると取得件数を上限で打ち切れる（検証用）。
+  - `KOKKAI_MEETING_REINGEST` を `1` / `true` / `yes` / `on` のいずれかにすると、既存 `issue_id` も含めて再取得する。
+  - `KOKKAI_MEETING_SESSIONS` で明示しない限り、対象回次は議案 ingest と同様に DB の最新側 2 会期から決まる。

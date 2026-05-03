@@ -169,6 +169,10 @@ def _decode_speakers_json(raw: str | None) -> list[str]:
     return [str(x) for x in data if isinstance(x, str)]
 
 
+def meeting_issue_exists(session: Session, issue_id: str) -> bool:
+    return session.get(MeetingRecordModel, issue_id) is not None
+
+
 def upsert_meeting(
     session: Session,
     record: MeetingRecord,

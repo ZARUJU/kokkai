@@ -1,19 +1,43 @@
+import os
+
 from kokkai.db.engine import session_scope
 from kokkai.db.schema import create_all
 from kokkai.ingest.parsers import shugiin_bills as parser
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.sources import shugiin_bills as source
 from kokkai.repositories import bills as bill_repository
+from kokkai.repositories import diet_sessions
 
 
 DEFAULT_SESSION_NUMBERS = (221,)
+
+
+def _parse_session_env() -> tuple[int, ...] | None:
+    raw = os.getenv("SHUGIIN_BILL_SESSIONS")
+    if raw is None or raw.strip() == "":
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    return tuple(int(p) for p in parts)
+
+
+def _resolve_session_numbers() -> tuple[int, ...]:
+    env_sessions = _parse_session_env()
+    if env_sessions is not None:
+        return env_sessions
+    with session_scope() as session:
+        numbers = diet_sessions.latest_session_numbers(session, 2)
+    if not numbers:
+        return DEFAULT_SESSION_NUMBERS
+    return tuple(numbers)
 
 
 def run() -> PipelineResult:
     total_count = 0
 
     create_all()
-    for session_number in DEFAULT_SESSION_NUMBERS:
+    for session_number in _resolve_session_numbers():
         document = source.fetch(session_number)
         bills = parser.parse(document.text, document.url)
 
