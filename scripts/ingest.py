@@ -40,7 +40,8 @@ def main() -> None:
     try:
         results = run(args.pipelines or None)
     except ValueError as error:
-        parser.error(str(error))
+        log.error("ingest が失敗しました: %s", error)
+        raise SystemExit(1) from error
 
     for result in results:
         line = f"ingested {result.name}: {result.count}"

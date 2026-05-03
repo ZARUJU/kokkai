@@ -65,6 +65,7 @@ def run() -> PipelineResult:
     total = 0
     skipped_existing = 0
     skipped_no_record = 0
+    skipped_parse_error = 0
     limit = _ingest_limit()
     reingest = _reingest_meetings()
 
@@ -105,7 +106,12 @@ def run() -> PipelineResult:
             skipped_no_record += 1
             continue
 
-        record, speeches, topic_labels = parser.parse_meeting_bundle(raw)
+        try:
+            record, speeches, topic_labels = parser.parse_meeting_bundle(raw)
+        except ValueError as exc:
+            skipped_parse_error += 1
+            _LOG.warning("国会会議録: issue_id=%s をスキップ（パース不可: %s）", issue_id, exc)
+            continue
         source_url = f"{source.BASE_URL}/meeting?issueID={issue_id}&maximumRecords=1&recordPacking=json"
 
         with session_scope() as session:
@@ -125,10 +131,11 @@ def run() -> PipelineResult:
         )
 
     _LOG.info(
-        "国会会議録: 完了 ingested=%s skipped_existing=%s skipped_empty_response=%s stopped_for_limit=%s",
+        "国会会議録: 完了 ingested=%s skipped_existing=%s skipped_empty_response=%s skipped_parse_error=%s stopped_for_limit=%s",
         total,
         skipped_existing,
         skipped_no_record,
+        skipped_parse_error,
         stopped_for_limit,
     )
     return PipelineResult(name=source.SOURCE_NAME, count=total)

@@ -9,6 +9,7 @@ from typing import Any
 
 from kokkai.ingest.parsers.common import clean_kokkai_speaker_name
 from kokkai.ingest.parsers.common import normalize_spaces
+from kokkai.ingest.parsers.common import parse_japanese_date
 from kokkai.models.meeting_record import MeetingRecord
 from kokkai.models.meeting_record import MeetingSpeech
 from kokkai.models.meeting_record import MeetingTopic
@@ -199,11 +200,48 @@ def _as_speech_list(value: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _parse_api_date(value: str | None) -> date | None:
-    if not value:
+def _parse_api_date(value: Any) -> date | None:
+    """API の `date` は文字列 (YYYY-MM-DD)、数値 (YYYYMMDD)、datetime 文字列などで返ることがある。"""
+    if value is None:
         return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, int):
+        text = str(value)
+        if len(text) == 8 and text.isdigit():
+            try:
+                return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+            except ValueError:
+                return None
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[0].strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            pass
+    if len(text) == 8 and text.isdigit():
+        try:
+            return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+        except ValueError:
+            return None
+    for sep in ("/", "."):
+        if sep in text:
+            parts = [p.strip() for p in text.replace(".", sep).split(sep) if p.strip()]
+            if len(parts) == 3 and all(p.isdigit() for p in parts):
+                try:
+                    y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+                    return date(y, m, d)
+                except ValueError:
+                    break
     try:
-        return date.fromisoformat(value)
+        return date.fromisoformat(text)
     except ValueError:
         return None
 
@@ -267,7 +305,9 @@ def parse_meeting_bundle(raw: dict[str, Any]) -> tuple[MeetingRecord, list[Meeti
         end_hhmm = extract_closing_hhmm_from_ordered_speeches(speeches)
     topics = extract_topic_labels(header or "") if header else []
 
-    meeting_date = _parse_api_date(str(raw.get("date") or ""))
+    meeting_date = _parse_api_date(raw.get("date"))
+    if meeting_date is None and header:
+        meeting_date = parse_japanese_date(header)
     if meeting_date is None:
         raise ValueError("meetingRecord.date is missing or invalid")
 
