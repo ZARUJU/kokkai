@@ -68,7 +68,7 @@ PIPELINES = {
 uv run python scripts/ingest.py shugiin_sessions
 ```
 
-引数を省略すると、登録済み pipeline をすべて実行します。
+引数を省略すると、登録済み pipeline をすべて **`PIPELINES` の定義順**（現在は会期一覧 → 議案 → 会議録）で実行します。
 
 ```bash
 uv run python scripts/ingest.py

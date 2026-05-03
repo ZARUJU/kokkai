@@ -9,8 +9,8 @@ from kokkai.ingest.pipelines import shugiin_sessions
 
 
 PIPELINES: dict[str, Pipeline] = {
-    "shugiin_bills": shugiin_bills.run,
     "shugiin_sessions": shugiin_sessions.run,
+    "shugiin_bills": shugiin_bills.run,
     "kokkai_meetings": kokkai_meetings.run,
 }
 
