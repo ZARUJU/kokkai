@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from kokkai.api.routes import bills
 from kokkai.api.routes import diet_sessions
 from kokkai.api.routes import health
+from kokkai.api.routes import meeting_records
 from kokkai.db.schema import create_all
 
 
@@ -19,3 +20,4 @@ app = FastAPI(title="kokkai", lifespan=lifespan)
 app.include_router(health.router)
 app.include_router(diet_sessions.router)
 app.include_router(bills.router)
+app.include_router(meeting_records.router)

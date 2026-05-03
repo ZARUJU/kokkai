@@ -1,5 +1,6 @@
 from kokkai.ingest.pipeline import Pipeline
 from kokkai.ingest.pipeline import PipelineResult
+from kokkai.ingest.pipelines import kokkai_meetings
 from kokkai.ingest.pipelines import shugiin_bills
 from kokkai.ingest.pipelines import shugiin_sessions
 
@@ -7,6 +8,7 @@ from kokkai.ingest.pipelines import shugiin_sessions
 PIPELINES: dict[str, Pipeline] = {
     "shugiin_bills": shugiin_bills.run,
     "shugiin_sessions": shugiin_sessions.run,
+    "kokkai_meetings": kokkai_meetings.run,
 }
 
 
