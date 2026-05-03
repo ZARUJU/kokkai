@@ -1,7 +1,21 @@
 [project]
 name = "kokkai"
 version = "0.1.0"
-description = "Add your description here"
+description = "国会関連データを収集・正規化し、APIで提供するアプリケーション"
 readme = "README.md"
 requires-python = ">=3.11.7"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "psycopg[binary]>=3.2.0",
+    "sqlalchemy>=2.0.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+kokkai = "kokkai.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
