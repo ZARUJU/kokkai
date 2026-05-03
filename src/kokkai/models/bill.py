@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import DateTime
+from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import Text
@@ -9,6 +10,13 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 
 from kokkai.db.base import Base
+
+
+def canonical_key_for_bill(submitted_session_number: int, category: str, number: int | None) -> str | None:
+    """提出回次・種別・番号がそろう議案の跨会期な同一議案のグルーピングに使う。"""
+    if number is None:
+        return None
+    return f"{submitted_session_number}:{category}:{number}"
 
 
 @dataclass(frozen=True)
@@ -31,11 +39,28 @@ class BillModel(Base):
     session_number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     submitted_session_number: Mapped[int] = mapped_column(Integer, nullable=False)
     category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    canonical_key: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     number: Mapped[int | None] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     progress_url: Mapped[str | None] = mapped_column(String)
     text_url: Mapped[str | None] = mapped_column(String)
+    source_url: Mapped[str] = mapped_column(String, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BillListingSessionModel(Base):
+    """議案一覧 HTML 上で、その国会回次の表に現れた事実（会期をまたぐ同一 source_id 用）。"""
+
+    __tablename__ = "bill_listing_sessions"
+
+    bill_source_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("bills.source_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    session_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
     source_url: Mapped[str] = mapped_column(String, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

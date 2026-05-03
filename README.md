@@ -80,10 +80,10 @@ uv run python api.py
 | `GET`    | `/health`                 | ヘルスチェック         |
 | `GET`    | `/diet-sessions`          | 会期一覧               |
 | `GET`    | `/diet-sessions/{number}` | 指定した国会回次の会期 |
-| `GET`    | `/bills`                  | 議案一覧               |
-| `GET`    | `/bills?session_number=221` | 指定した国会回次の議案一覧 |
-| `GET`    | `/bills?category=衆法` | 指定した議案種別の議案一覧 |
-| `GET`    | `/bills?session_number=221&category=衆法` | 指定した国会回次・議案種別の議案一覧 |
+| `GET`    | `/diet-sessions/{number}/bills` | 指定した国会回次の議案一覧 |
+| `GET`    | `/diet-sessions/{number}/bills?category=衆法` | 会期・種別で絞った議案一覧 |
+| `GET`    | `/bills`                  | 全会期の議案一覧       |
+| `GET`    | `/bills?category=衆法` | 議案種別で絞った議案一覧 |
 | `GET`    | `/bills/{source_id}`      | 指定した議案と構造化済み経過情報 |
 | `GET`    | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報 |
 | `GET`    | `/bills/{source_id}/texts` | 指定した議案の本文情報 |

@@ -3,13 +3,17 @@ from datetime import datetime
 import re
 
 from sqlalchemy import delete
+from sqlalchemy import exists
+from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from kokkai.models.bill import Bill
+from kokkai.models.bill import BillListingSessionModel
 from kokkai.models.bill import BillModel
 from kokkai.models.bill import BillProgressItem
+from kokkai.models.bill import canonical_key_for_bill
 from kokkai.models.bill import BillProgressItemModel
 from kokkai.models.bill import BillTextDocument
 from kokkai.models.bill import BillTextDocumentModel
@@ -26,6 +30,11 @@ def upsert_many(session: Session, bills: list[Bill], source_url: str) -> None:
             "session_number": bill.session_number,
             "submitted_session_number": bill.submitted_session_number,
             "category": bill.category,
+            "canonical_key": canonical_key_for_bill(
+                bill.submitted_session_number,
+                bill.category,
+                bill.number,
+            ),
             "number": bill.number,
             "title": bill.title,
             "status": bill.status,
@@ -45,6 +54,7 @@ def upsert_many(session: Session, bills: list[Bill], source_url: str) -> None:
             "session_number": excluded.session_number,
             "submitted_session_number": excluded.submitted_session_number,
             "category": excluded.category,
+            "canonical_key": excluded.canonical_key,
             "number": excluded.number,
             "title": excluded.title,
             "status": excluded.status,
@@ -56,6 +66,31 @@ def upsert_many(session: Session, bills: list[Bill], source_url: str) -> None:
     )
     session.execute(statement)
 
+    listing_values = [
+        {
+            "bill_source_id": bill.source_id,
+            "session_number": bill.session_number,
+            "status": bill.status,
+            "source_url": source_url,
+            "fetched_at": fetched_at,
+        }
+        for bill in bills
+    ]
+    listing_stmt = insert(BillListingSessionModel).values(listing_values)
+    listing_excluded = listing_stmt.excluded
+    listing_stmt = listing_stmt.on_conflict_do_update(
+        index_elements=[
+            BillListingSessionModel.bill_source_id,
+            BillListingSessionModel.session_number,
+        ],
+        set_={
+            "status": listing_excluded.status,
+            "source_url": listing_excluded.source_url,
+            "fetched_at": listing_excluded.fetched_at,
+        },
+    )
+    session.execute(listing_stmt)
+
 
 def list_all(
     session: Session,
@@ -64,7 +99,18 @@ def list_all(
 ) -> list[dict[str, object]]:
     statement = select(BillModel)
     if session_number is not None:
-        statement = statement.where(BillModel.session_number == session_number)
+        listed_in_session = exists(
+            select(1).where(
+                BillListingSessionModel.bill_source_id == BillModel.source_id,
+                BillListingSessionModel.session_number == session_number,
+            )
+        )
+        statement = statement.where(
+            or_(
+                listed_in_session,
+                BillModel.session_number == session_number,
+            )
+        )
     if category is not None:
         statement = statement.where(BillModel.category == category)
 
@@ -75,12 +121,18 @@ def list_all(
         BillModel.title,
     )
     rows = session.scalars(statement).all()
-    return [to_dict(row) for row in rows]
+    out = [to_dict(row) for row in rows]
+    _attach_listing_sessions(session, out)
+    return out
 
 
 def find_by_source_id(session: Session, source_id: str) -> dict[str, object] | None:
     row = session.get(BillModel, source_id)
-    return to_dict(row) if row else None
+    if row is None:
+        return None
+    bill = to_dict(row)
+    _attach_listing_sessions(session, [bill])
+    return bill
 
 
 def find_by_source_id_with_progress(session: Session, source_id: str) -> dict[str, object] | None:
@@ -89,6 +141,12 @@ def find_by_source_id_with_progress(session: Session, source_id: str) -> dict[st
         return None
 
     bill["progress"] = get_structured_progress(session, source_id)
+    key = bill.get("canonical_key")
+    bill["related_bill_source_ids"] = _list_related_source_ids(
+        session,
+        key if isinstance(key, str) else None,
+        source_id,
+    )
     return bill
 
 
@@ -261,6 +319,7 @@ def to_dict(row: BillModel) -> dict[str, object]:
         "session_number": row.session_number,
         "submitted_session_number": row.submitted_session_number,
         "category": row.category,
+        "canonical_key": row.canonical_key,
         "number": row.number,
         "title": row.title,
         "status": row.status,
@@ -269,6 +328,68 @@ def to_dict(row: BillModel) -> dict[str, object]:
         "source_url": row.source_url,
         "fetched_at": fetched_at.isoformat(),
     }
+
+
+def listing_session_to_dict(row: BillListingSessionModel) -> dict[str, object]:
+    fetched_at = row.fetched_at
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=UTC)
+    return {
+        "session_number": row.session_number,
+        "status": row.status,
+        "source_url": row.source_url,
+        "fetched_at": fetched_at.isoformat(),
+    }
+
+
+def _list_related_source_ids(
+    session: Session,
+    canonical_key: str | None,
+    exclude_source_id: str,
+) -> list[str]:
+    if not canonical_key:
+        return []
+    rows = session.scalars(
+        select(BillModel.source_id)
+        .where(
+            BillModel.canonical_key == canonical_key,
+            BillModel.source_id != exclude_source_id,
+        )
+        .order_by(BillModel.source_id)
+    ).all()
+    return list(rows)
+
+
+def _attach_listing_sessions(session: Session, bill_dicts: list[dict[str, object]]) -> None:
+    if not bill_dicts:
+        return
+
+    ids = [str(d["source_id"]) for d in bill_dicts]
+    rows = session.scalars(
+        select(BillListingSessionModel)
+        .where(BillListingSessionModel.bill_source_id.in_(ids))
+        .order_by(
+            BillListingSessionModel.bill_source_id,
+            BillListingSessionModel.session_number,
+        )
+    ).all()
+    by_bill: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        by_bill.setdefault(row.bill_source_id, []).append(listing_session_to_dict(row))
+
+    for d in bill_dicts:
+        sid = str(d["source_id"])
+        entries = by_bill.get(sid)
+        if not entries:
+            entries = [
+                {
+                    "session_number": d["session_number"],
+                    "status": d["status"],
+                    "source_url": d["source_url"],
+                    "fetched_at": d["fetched_at"],
+                }
+            ]
+        d["listing_sessions"] = entries
 
 
 def progress_item_to_dict(row: BillProgressItemModel) -> dict[str, object]:

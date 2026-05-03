@@ -21,13 +21,15 @@
 | `GET` | `/health` | ヘルスチェック |
 | `GET` | `/diet-sessions` | 会期一覧 |
 | `GET` | `/diet-sessions/{number}` | 指定した国会回次の会期 |
-| `GET` | `/bills` | 議案一覧 |
-| `GET` | `/bills?session_number=221` | 指定した国会回次の議案一覧 |
-| `GET` | `/bills?category=衆法` | 指定した議案種別の議案一覧 |
-| `GET` | `/bills?session_number=221&category=衆法` | 指定した国会回次・議案種別の議案一覧 |
-| `GET` | `/bills/{source_id}` | 指定した議案と構造化済み経過情報 |
-| `GET` | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報 |
+| `GET` | `/diet-sessions/{number}/bills` | 指定した国会回次の議案一覧（衆議院議案一覧ページに相当） |
+| `GET` | `/diet-sessions/{number}/bills?category=衆法` | 上記に加え議案種別で絞り込み |
+| `GET` | `/bills` | 全会期をまたいだ議案一覧 |
+| `GET` | `/bills?category=衆法` | 議案種別で絞り込んだ議案一覧 |
+| `GET` | `/bills/{source_id}` | 指定した議案の詳細と構造化済み経過情報 |
+| `GET` | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報のみ |
 | `GET` | `/bills/{source_id}/texts` | 指定した議案の本文情報 |
+
+会期で議案を列挙するときは **`/diet-sessions/{number}/bills`**、議案を `source_id` で参照するときは **`/bills/...`** とパスを分けている。
 
 ## `DietSession`
 
@@ -48,22 +50,36 @@
 
 ## `Bill`
 
-`/bills` と `/bills/{source_id}` で返す議案情報。`/bills/{source_id}` では `progress` も含む。
+`/bills`・`/diet-sessions/{number}/bills`・`/bills/{source_id}` で返す議案情報。
 
 | 項目 | 型 | 説明 |
 | --- | --- | --- |
 | `source_id` | `string` | 取得元ページから採用した議案識別子。経過情報 URL のファイル名部分を使う |
-| `session_number` | `integer` | 議案一覧を掲載している国会回次 |
+| `session_number` | `integer` | いちばん新しく議案一覧を取り込んだときの国会回次。会期ごとの掲載履歴は `listing_sessions` を参照 |
 | `submitted_session_number` | `integer` | 議案の提出回次 |
 | `category` | `string` | 議案種別。例: `衆法`, `参法`, `閣法`, `予算`, `条約`, `決算` |
+| `canonical_key` | `string \| null` | 番号付き議案のみ。`提出回次:種別:番号` 形式。会期をまたいで経過ページ ID が異なる別レコードをまとめるときのキー |
 | `number` | `integer \| null` | 議案番号。番号がない議案では `null` |
 | `title` | `string` | 議案件名 |
-| `status` | `string` | 議案一覧上の審議状況。例: `成立`, `衆議院で審議中` |
+| `status` | `string` | 直近の取り込みにおける議案一覧上の審議状況 |
 | `progress_url` | `string \| null` | 経過情報ページの URL |
 | `text_url` | `string \| null` | 本文情報一覧ページの URL |
-| `source_url` | `string` | 議案一覧の取得元 URL |
-| `fetched_at` | `string` | 取得日時。ISO 8601 形式 |
+| `source_url` | `string` | 議案一覧の取得元 URL（直近取り込み） |
+| `fetched_at` | `string` | 議案レコードの取得日時。ISO 8601 形式 |
+| `listing_sessions` | `array<BillListingSession>` | 衆議院議案一覧のどの国会回次の表に載ったか（会期ごとの審議状況など） |
 | `progress` | `BillProgress` | `/bills/{source_id}` のみ。構造化済み経過情報 |
+| `related_bill_source_ids` | `array<string>` | `/bills/{source_id}` のみ。同じ `canonical_key` の別 `source_id`（別会期の経過ページなど） |
+
+## `BillListingSession`
+
+`Bill.listing_sessions` の各要素。会期ごとの一覧掲載事実に対応する。
+
+| 項目 | 型 | 説明 |
+| --- | --- | --- |
+| `session_number` | `integer` | 当該議案が掲載されていた国会回次（衆議院 `kaiji{回次}.htm` に相当） |
+| `status` | `string` | その回次の議案一覧上の審議状況 |
+| `source_url` | `string` | その取り込みの議案一覧 URL |
+| `fetched_at` | `string` | その掲載情報の取得日時。ISO 8601 形式 |
 
 ## `BillProgress`
 
