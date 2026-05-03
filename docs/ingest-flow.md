@@ -74,6 +74,8 @@ uv run python scripts/ingest.py shugiin_sessions
 uv run python scripts/ingest.py
 ```
 
+ログは標準エラーに出力されます。`-v`（`--verbose`）で DEBUG（HTTP の GET も出力）、`-q`（`--quiet`）で WARNING のみです。既定レベルは環境変数 `KOKKAI_INGEST_LOG_LEVEL`（例: `DEBUG`）でも変更できます。
+
 ## 8. API route を追加する
 
 `src/kokkai/api/routes/` に route を追加し、`src/kokkai/api/app.py` で `include_router` します。
