@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from kokkai.api.routes import bills
 from kokkai.api.routes import diet_sessions
 from kokkai.api.routes import health
 from kokkai.db.schema import create_all
@@ -17,3 +18,4 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="kokkai", lifespan=lifespan)
 app.include_router(health.router)
 app.include_router(diet_sessions.router)
+app.include_router(bills.router)

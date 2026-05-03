@@ -68,7 +68,7 @@ uv run pytest
 
 ## API
 
-会期一覧を取り込んだあと、API から取得できます。
+会期一覧と議案一覧を取り込んだあと、API から取得できます。
 
 ```bash
 uv run python scripts/ingest.py
@@ -80,6 +80,15 @@ uv run python api.py
 | `GET`    | `/health`                 | ヘルスチェック         |
 | `GET`    | `/diet-sessions`          | 会期一覧               |
 | `GET`    | `/diet-sessions/{number}` | 指定した国会回次の会期 |
+| `GET`    | `/bills`                  | 議案一覧               |
+| `GET`    | `/bills?session_number=221` | 指定した国会回次の議案一覧 |
+| `GET`    | `/bills?category=衆法` | 指定した議案種別の議案一覧 |
+| `GET`    | `/bills?session_number=221&category=衆法` | 指定した国会回次・議案種別の議案一覧 |
+| `GET`    | `/bills/{source_id}`      | 指定した議案と構造化済み経過情報 |
+| `GET`    | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報 |
+| `GET`    | `/bills/{source_id}/texts` | 指定した議案の本文情報 |
+
+API のレスポンス項目と型は [docs/api.md](docs/api.md) に記載します。
 
 ## データソース
 
