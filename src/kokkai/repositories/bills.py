@@ -18,13 +18,18 @@ from kokkai.models.bill import BillProgressItemModel
 from kokkai.models.bill import BillTextDocument
 from kokkai.models.bill import BillTextDocumentModel
 from kokkai.ingest.parsers.common import compact_person_full_name
+from kokkai.ingest.parsers.common import optional_compact_person_query
 
+
+_PROGRESS_SUBMITTER_LIST = "議案提出者一覧"
+_PROGRESS_SUPPORTERS = "議案提出の賛成者"
+_PROGRESS_SUBMITTER_SUMMARY = "議案提出者"
 
 _PERSON_MATCH_PROGRESS_NAMES: frozenset[str] = frozenset(
     {
-        "議案提出者一覧",
-        "議案提出の賛成者",
-        "議案提出者",
+        _PROGRESS_SUBMITTER_LIST,
+        _PROGRESS_SUPPORTERS,
+        _PROGRESS_SUBMITTER_SUMMARY,
     }
 )
 
@@ -41,13 +46,13 @@ def _bill_source_ids_for_person_compact(session: Session, norm: str) -> set[str]
     out: set[str] = set()
     for row in rows:
         candidates: list[str] = []
-        if row.name in ("議案提出者一覧", "議案提出の賛成者"):
-            candidates.extend(_split_person_values(row.value))
-        elif row.name == "議案提出者":
+        if row.name == _PROGRESS_SUBMITTER_SUMMARY:
             summary = _parse_submitter_summary(row.value, [])
             rep = summary.get("representative")
             if isinstance(rep, str):
                 candidates.append(rep)
+        else:
+            candidates.extend(_split_person_values(row.value))
         for person in candidates:
             if compact_person_full_name(person) == norm:
                 out.add(row.bill_source_id)
@@ -135,8 +140,8 @@ def list_all(
     person_full_name: str | None = None,
 ) -> list[dict[str, object]]:
     statement = select(BillModel)
-    if person_full_name and person_full_name.strip():
-        norm = compact_person_full_name(person_full_name)
+    apply_person, norm = optional_compact_person_query(person_full_name)
+    if apply_person:
         if not norm:
             return []
         person_ids = _bill_source_ids_for_person_compact(session, norm)
@@ -311,17 +316,17 @@ def get_structured_progress(session: Session, bill_source_id: str) -> dict[str, 
         .order_by(BillProgressItemModel.item_order)
     ).all()
     values = {row.name: _clean_text(row.value) for row in rows}
-    submitters = _split_person_values(values.get("議案提出者一覧"))
+    submitters = _split_person_values(values.get(_PROGRESS_SUBMITTER_LIST))
 
     return {
         "bill_type": values.get("議案種類"),
         "submit_session": _parse_int_value(values.get("議案提出回次")),
         "bill_number": _parse_int_value(values.get("議案番号")),
         "title": values.get("議案件名"),
-        "submitter": _parse_submitter_summary(values.get("議案提出者"), submitters),
+        "submitter": _parse_submitter_summary(values.get(_PROGRESS_SUBMITTER_SUMMARY), submitters),
         "submitter_groups": _split_semicolon_values(values.get("議案提出会派")),
         "submitters": submitters,
-        "supporters": _split_person_values(values.get("議案提出の賛成者")),
+        "supporters": _split_person_values(values.get(_PROGRESS_SUPPORTERS)),
         "house_of_representatives": {
             "preliminary_received_date": _parse_date_value(values.get("衆議院予備審査議案受理年月日")),
             "preliminary_referral": _parse_date_detail(values.get("衆議院予備付託年月日／衆議院予備付託委員会"), "committee"),

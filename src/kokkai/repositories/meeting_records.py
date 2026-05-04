@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import UTC
 from datetime import datetime
@@ -20,6 +21,9 @@ from kokkai.models.meeting_record import MeetingTopic
 from kokkai.models.meeting_record import MeetingTopicModel
 from kokkai.ingest.parsers.common import compact_person_full_name
 from kokkai.ingest.parsers.common import normalize_spaces
+from kokkai.ingest.parsers.common import optional_compact_person_query
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_for_bill_match(value: str) -> str:
@@ -136,12 +140,16 @@ def _encode_bill_source_ids_json(ids: list[str]) -> str:
     return json.dumps(ids, ensure_ascii=False, separators=(",", ":"))
 
 
-def _decode_bill_source_ids_json(raw: str | None) -> list[str]:
+def _decode_json_str_list(raw: str | None) -> list[str]:
     if not raw or not raw.strip():
         return []
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
+        logger.warning(
+            "JSONDecodeError for string-list column (preview %.120s)",
+            raw.replace("\n", " ")[:120],
+        )
         return []
     if not isinstance(data, list):
         return []
@@ -158,25 +166,6 @@ def _utc(value: datetime | None) -> datetime | None:
 
 def _encode_speakers_json(speakers: list[str]) -> str:
     return json.dumps(speakers, ensure_ascii=False, separators=(",", ":"))
-
-
-def _sqlite_compact_person_column(column):
-    x = column
-    for ch in ("\u3000", "\t", "\n", "\r", "\f", "\v", " "):
-        x = func.replace(x, ch, "")
-    return x
-
-
-def _decode_speakers_json(raw: str | None) -> list[str]:
-    if not raw or not raw.strip():
-        return []
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(data, list):
-        return []
-    return [str(x) for x in data if isinstance(x, str)]
 
 
 def meeting_issue_exists(session: Session, issue_id: str) -> bool:
@@ -287,18 +276,19 @@ def list_meetings(
         statement = statement.where(MeetingRecordModel.session == session_number)
     if name_of_meeting:
         statement = statement.where(MeetingRecordModel.name_of_meeting == name_of_meeting)
-    if speaker_full_name and speaker_full_name.strip():
-        norm = compact_person_full_name(speaker_full_name)
+    apply_speaker, norm = optional_compact_person_query(speaker_full_name)
+    if apply_speaker:
         if not norm:
             return []
         j_table = func.json_each(MeetingRecordModel.speakers_json).table_valued("value").alias("j")
         statement = statement.where(
             exists(
                 select(1).select_from(j_table).where(
-                    _sqlite_compact_person_column(j_table.c.value) == norm,
+                    func.kokkai_compact_person(j_table.c.value) == norm,
                 )
             )
         )
+
     statement = statement.order_by(MeetingRecordModel.meeting_date.desc(), MeetingRecordModel.issue_id).limit(limit)
     rows = session.scalars(statement).all()
     return [meeting_to_dict(row) for row in rows]
@@ -345,7 +335,7 @@ def list_speeches_by_speaker_full_name(
         .join(MeetingRecordModel, MeetingSpeechModel.issue_id == MeetingRecordModel.issue_id)
         .where(
             MeetingSpeechModel.speaker.isnot(None),
-            _sqlite_compact_person_column(MeetingSpeechModel.speaker) == norm,
+            func.kokkai_compact_person(MeetingSpeechModel.speaker) == norm,
         )
     )
     if session_number is not None:
@@ -399,7 +389,7 @@ def meeting_to_dict(row: MeetingRecordModel) -> dict[str, object]:
         "pdf_url": row.pdf_url,
         "meeting_start_hhmm": row.meeting_start_hhmm,
         "meeting_end_hhmm": row.meeting_end_hhmm,
-        "speakers": _decode_speakers_json(row.speakers_json),
+        "speakers": _decode_json_str_list(row.speakers_json),
         "source_url": row.source_url,
         "fetched_at": fetched_at.isoformat(),
     }
@@ -411,5 +401,5 @@ def topic_to_dict(row: MeetingTopicModel) -> dict[str, object]:
         "issue_id": row.issue_id,
         "topic_order": row.topic_order,
         "label": row.label,
-        "bill_source_ids": _decode_bill_source_ids_json(row.bill_source_ids_json),
+        "bill_source_ids": _decode_json_str_list(row.bill_source_ids_json),
     }

@@ -24,6 +24,16 @@ def _ensure_sqlite_parent(database_url: str) -> None:
 _ensure_sqlite_parent(settings.database_url)
 
 engine = create_engine(settings.database_url)
+
+
+def _register_sqlite_udfs() -> None:
+    from kokkai.db.sqlite_udfs import register_sqlite_functions
+
+    register_sqlite_functions(engine)
+
+
+_register_sqlite_udfs()
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

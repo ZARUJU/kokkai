@@ -11,6 +11,17 @@ def compact_person_full_name(value: str) -> str:
     return re.sub(r"\s+", "", value.replace("\u3000", "")).strip()
 
 
+def optional_compact_person_query(raw: str | None) -> tuple[bool, str]:
+    """オプションの人物フルネームクエリを解釈する。
+
+    (フィルタを適用しない, _) を空白のみ・未指定のときに返す。
+    (適用する, compact_key) をそれ以外で返し、compact_key が空なら該当なし。
+    """
+    if raw is None or not raw.strip():
+        return (False, "")
+    return (True, compact_person_full_name(raw))
+
+
 def parse_days(value: str) -> int | None:
     match = re.search(r"\d+", normalize_spaces(value))
     return int(match.group(0)) if match else None
