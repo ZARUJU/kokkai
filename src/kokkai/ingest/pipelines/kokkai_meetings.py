@@ -3,7 +3,9 @@ import os
 
 from kokkai.db.engine import session_scope
 from kokkai.db.schema import create_all
+from kokkai.ingest.cli_sessions import ingest_sessions_explicit
 from kokkai.ingest.parsers import kokkai_meetings as parser
+from kokkai.ingest.pipeline import IngestRunContext
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.sources import kokkai_api as source
 from kokkai.repositories import diet_sessions
@@ -16,21 +18,10 @@ DEFAULT_SESSION_FALLBACK_TO = 221
 _LOG = logging.getLogger(__name__)
 
 
-def _parse_meeting_sessions_env() -> tuple[int, int] | None:
-    raw = os.getenv("KOKKAI_MEETING_SESSIONS")
-    if raw is None or raw.strip() == "":
-        return None
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    if not parts:
-        return None
-    numbers = [int(p) for p in parts]
-    return min(numbers), max(numbers)
-
-
-def _resolve_session_range() -> tuple[int, int, str]:
-    env_range = _parse_meeting_sessions_env()
-    if env_range is not None:
-        return (*env_range, "環境変数 KOKKAI_MEETING_SESSIONS")
+def _resolve_session_range(context: IngestRunContext) -> tuple[int, int, str]:
+    explicit = ingest_sessions_explicit(context, os.getenv("KOKKAI_MEETING_SESSIONS"))
+    if explicit is not None:
+        return min(explicit), max(explicit), "CLI または環境変数 KOKKAI_MEETING_SESSIONS"
     with session_scope() as session:
         numbers = diet_sessions.latest_session_numbers(session, 2)
     if not numbers:
@@ -60,7 +51,7 @@ def _reingest_meetings() -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
-def run() -> PipelineResult:
+def run(context: IngestRunContext) -> PipelineResult:
     create_all()
     total = 0
     skipped_existing = 0
@@ -69,7 +60,7 @@ def run() -> PipelineResult:
     limit = _ingest_limit()
     reingest = _reingest_meetings()
 
-    session_from, session_to, range_note = _resolve_session_range()
+    session_from, session_to, range_note = _resolve_session_range(context)
     _LOG.info(
         "国会会議録: 回次 sessionFrom=%s sessionTo=%s（%s） reingest=%s limit=%s",
         session_from,

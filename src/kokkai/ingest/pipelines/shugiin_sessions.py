@@ -3,6 +3,7 @@ import logging
 from kokkai.db.engine import session_scope
 from kokkai.db.schema import create_all
 from kokkai.ingest.parsers import shugiin_sessions as parser
+from kokkai.ingest.pipeline import IngestRunContext
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.sources import shugiin_sessions as source
 from kokkai.repositories import diet_sessions
@@ -11,7 +12,7 @@ from kokkai.repositories import diet_sessions
 _LOG = logging.getLogger(__name__)
 
 
-def run() -> PipelineResult:
+def run(_context: IngestRunContext) -> PipelineResult:
     _LOG.info("衆議院会期一覧: 取得開始")
     document = source.fetch()
     sessions = parser.parse(document.text)

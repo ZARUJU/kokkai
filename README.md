@@ -72,6 +72,8 @@ uv run pytest
 
 ```bash
 uv run python scripts/ingest.py
+# 例: 議案・会議録・質問主意書だけ特定回次（`docs/scripts-ingest.md` 参照）
+# uv run python scripts/ingest.py shugiin_bills --session 221
 uv run python api.py
 ```
 

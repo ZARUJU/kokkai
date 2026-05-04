@@ -1,6 +1,7 @@
 import logging
 import time
 
+from kokkai.ingest.pipeline import IngestRunContext
 from kokkai.ingest.pipeline import Pipeline
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.pipelines import kokkai_meetings
@@ -19,14 +20,23 @@ PIPELINES: dict[str, Pipeline] = {
 _LOG = logging.getLogger(__name__)
 
 
-def run(selected_names: list[str] | None = None) -> list[PipelineResult]:
+def run(
+    selected_names: list[str] | None = None,
+    context: IngestRunContext | None = None,
+) -> list[PipelineResult]:
     names = selected_names or list(PIPELINES)
+    ctx = context or IngestRunContext()
     results: list[PipelineResult] = []
 
+    sess = ctx.session_numbers
+    sess_note = (
+        ",".join(str(n) for n in sess) if sess else "なし（各 pipeline の環境変数または DB）"
+    )
     _LOG.info(
-        "ingest runner: %s pipeline(s): %s",
+        "ingest runner: %s pipeline(s): %s | CLI 会期: %s",
         len(names),
         ", ".join(names),
+        sess_note,
     )
 
     for name in names:
@@ -38,7 +48,7 @@ def run(selected_names: list[str] | None = None) -> list[PipelineResult]:
 
         _LOG.info("start pipeline %r", name)
         started = time.perf_counter()
-        result = pipeline()
+        result = pipeline(ctx)
         elapsed = time.perf_counter() - started
         _LOG.info(
             "done pipeline %r in %.1fs (count=%s)",

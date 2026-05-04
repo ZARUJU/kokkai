@@ -50,7 +50,7 @@ src/kokkai/repositories/<data_name>.py
 src/kokkai/ingest/pipelines/<data_name>.py
 ```
 
-pipeline は `PipelineResult` を返します。
+pipeline は `IngestRunContext` を引数に取り `PipelineResult` を返します。
 
 ## 7. runner に登録する
 
@@ -68,13 +68,19 @@ PIPELINES = {
 uv run python scripts/ingest.py shugiin_sessions
 ```
 
-引数を省略すると、登録済み pipeline をすべて **`PIPELINES` の定義順**（現在は会期一覧 → 議案 → 会議録）で実行します。
+`--session` で国会回次を渡すと、対応する pipeline（衆議院議案・国会会議録・質問主意書）では **CLI が環境変数より優先**されます。
+
+```bash
+uv run python scripts/ingest.py shugiin_bills questions --session 219,221
+```
+
+引数を省略すると、登録済み pipeline をすべて **`PIPELINES` の定義順**で実行します。
 
 ```bash
 uv run python scripts/ingest.py
 ```
 
-ログは標準エラーに出力されます。`-v`（`--verbose`）で DEBUG（HTTP の GET も出力）、`-q`（`--quiet`）で WARNING のみです。既定レベルは環境変数 `KOKKAI_INGEST_LOG_LEVEL`（例: `DEBUG`）でも変更できます。
+ログは標準エラーに出力されます。`-v`（`--verbose`）で DEBUG（HTTP の GET も出力）、`-q`（`--quiet`）で WARNING のみです。既定レベルは環境変数 `KOKKAI_INGEST_LOG_LEVEL`（例: `DEBUG`）でも変更できます。`--session` と runner の詳細は [scripts-ingest.md](scripts-ingest.md) を参照してください。
 
 ## 8. API route を追加する
 

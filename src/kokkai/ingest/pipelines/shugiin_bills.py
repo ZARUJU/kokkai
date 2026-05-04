@@ -3,7 +3,9 @@ import os
 
 from kokkai.db.engine import session_scope
 from kokkai.db.schema import create_all
+from kokkai.ingest.cli_sessions import ingest_sessions_explicit
 from kokkai.ingest.parsers import shugiin_bills as parser
+from kokkai.ingest.pipeline import IngestRunContext
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.sources import shugiin_bills as source
 from kokkai.repositories import bills as bill_repository
@@ -15,20 +17,10 @@ DEFAULT_SESSION_NUMBERS = (221,)
 _LOG = logging.getLogger(__name__)
 
 
-def _parse_session_env() -> tuple[int, ...] | None:
-    raw = os.getenv("SHUGIIN_BILL_SESSIONS")
-    if raw is None or raw.strip() == "":
-        return None
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    if not parts:
-        return None
-    return tuple(int(p) for p in parts)
-
-
-def _resolve_session_numbers() -> tuple[tuple[int, ...], str]:
-    env_sessions = _parse_session_env()
-    if env_sessions is not None:
-        return env_sessions, "環境変数 SHUGIIN_BILL_SESSIONS"
+def _resolve_session_numbers(context: IngestRunContext) -> tuple[tuple[int, ...], str]:
+    explicit = ingest_sessions_explicit(context, os.getenv("SHUGIIN_BILL_SESSIONS"))
+    if explicit is not None:
+        return explicit, "CLI または環境変数 SHUGIIN_BILL_SESSIONS"
     with session_scope() as session:
         numbers = diet_sessions.latest_session_numbers(session, 2)
     if not numbers:
@@ -36,11 +28,11 @@ def _resolve_session_numbers() -> tuple[tuple[int, ...], str]:
     return tuple(numbers), "会期一覧 DB の新しい順から最大2件"
 
 
-def run() -> PipelineResult:
+def run(context: IngestRunContext) -> PipelineResult:
     total_count = 0
 
     create_all()
-    session_numbers, sessions_note = _resolve_session_numbers()
+    session_numbers, sessions_note = _resolve_session_numbers(context)
     _LOG.info(
         "衆議院議案: 対象国会回次=%s（%s）",
         ", ".join(str(n) for n in session_numbers),
