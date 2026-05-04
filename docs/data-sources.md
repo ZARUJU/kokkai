@@ -90,3 +90,27 @@
   - `KOKKAI_MEETING_INGEST_LIMIT` を設定すると取得件数を上限で打ち切れる（検証用）。
   - `KOKKAI_MEETING_REINGEST` を `1` / `true` / `yes` / `on` のいずれかにすると、既存 `issue_id` も含めて再取得する。
   - `KOKKAI_MEETING_SESSIONS` で明示しない限り、対象回次は議案 ingest と同様に DB の最新側 2 会期から決まる。
+
+## 質問主意書一覧（衆議院・参議院）
+
+- pipeline: `questions`
+- 種別: HTML
+- URL:
+  - https://www.shugiin.go.jp/internet/itdb_shitsumon.nsf/html/shitsumon/kaiji221_l.htm
+  - https://www.sangiin.go.jp/japanese/joho1/kousei/syuisyo/221/syuisyo.htm
+- 取得対象:
+  - 院別（`shugiin` / `sangiin`）
+  - 国会回次
+  - 提出番号
+  - 件名
+  - 提出者（取得できる場合）。会議録の発言者名と同じ `clean_kokkai_speaker_name` に相当する処理で正規化して保存する
+  - 経過・状態（衆議院）
+  - 詳細 URL、質問本文 HTML URL、答弁本文 HTML URL
+  - 質問本文・答弁本文のプレーンテキスト（各 HTML を取得して抽出）
+- 主キー:
+  - `院別 + 国会回次 + 提出番号`
+- 更新方針:
+  - 各院の配布一覧ページを再取得し、主キーで upsert する。
+- 保存方針:
+  - 解析後の質問主意書一覧データを SQLite に保存する。
+  - 取得元 URL と取得日時を各レコードに保持する。

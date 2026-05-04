@@ -130,6 +130,25 @@ class BillTextDocumentOut(BaseModel):
     fetched_at: str
 
 
+class QuestionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    chamber: str
+    session_number: int
+    number: int
+    title: str
+    submitter: str | None
+    status: str | None
+    details_url: str | None
+    question_url: str | None
+    answer_url: str | None
+    question_text: str | None
+    answer_text: str | None
+    source_url: str
+    fetched_at: str
+
+
 class MeetingRecordListOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

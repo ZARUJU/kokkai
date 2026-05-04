@@ -8,6 +8,7 @@ from kokkai.settings import settings
 from kokkai.models import meeting_record  # noqa: F401
 from kokkai.models import bill  # noqa: F401
 from kokkai.models import diet_session  # noqa: F401
+from kokkai.models import question  # noqa: F401
 
 
 def create_all() -> None:
@@ -42,3 +43,10 @@ def _apply_sqlite_compat_migrations() -> None:
                     "SELECT source_id, session_number, status, source_url, fetched_at FROM bills"
                 )
             )
+
+        question_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(questions)"))}
+        if question_cols:
+            if "question_text" not in question_cols:
+                conn.execute(text("ALTER TABLE questions ADD COLUMN question_text TEXT"))
+            if "answer_text" not in question_cols:
+                conn.execute(text("ALTER TABLE questions ADD COLUMN answer_text TEXT"))

@@ -4,6 +4,7 @@ import time
 from kokkai.ingest.pipeline import Pipeline
 from kokkai.ingest.pipeline import PipelineResult
 from kokkai.ingest.pipelines import kokkai_meetings
+from kokkai.ingest.pipelines import questions
 from kokkai.ingest.pipelines import shugiin_bills
 from kokkai.ingest.pipelines import shugiin_sessions
 
@@ -12,6 +13,7 @@ PIPELINES: dict[str, Pipeline] = {
     "shugiin_sessions": shugiin_sessions.run,
     "shugiin_bills": shugiin_bills.run,
     "kokkai_meetings": kokkai_meetings.run,
+    "questions": questions.run,
 }
 
 _LOG = logging.getLogger(__name__)

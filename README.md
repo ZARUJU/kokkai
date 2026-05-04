@@ -87,6 +87,10 @@ uv run python api.py
 | `GET`    | `/bills/{source_id}`      | 指定した議案と構造化済み経過情報 |
 | `GET`    | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報 |
 | `GET`    | `/bills/{source_id}/texts` | 指定した議案の本文情報 |
+| `GET`    | `/questions`              | 質問主意書一覧（質問・答弁本文を含む。衆議院・参議院） |
+| `GET`    | `/questions?chamber=shugiin&session_number=221` | 院別・会期で絞った質問主意書一覧 |
+| `GET`    | `/questions?person_full_name=竹詰仁` | 提出者フルネームで絞った質問主意書一覧（議案一覧と同一規則） |
+| `GET`    | `/questions/{source_id}` | 上記と同じ項目の単票取得（`source_id` 指定） |
 
 API のレスポンス項目と型は [docs/api.md](docs/api.md) に記載します。
 

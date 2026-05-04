@@ -28,6 +28,10 @@
 | `GET` | `/bills/{source_id}` | 指定した議案の詳細と構造化済み経過情報 |
 | `GET` | `/bills/{source_id}/progress` | 指定した議案の構造化済み経過情報のみ |
 | `GET` | `/bills/{source_id}/texts` | 指定した議案の本文情報 |
+| `GET` | `/questions` | 質問主意書一覧（本文・答弁本文を含む。衆議院・参議院） |
+| `GET` | `/questions?chamber=shugiin&session_number=221` | 院別・国会回次で絞り込んだ質問主意書一覧 |
+| `GET` | `/questions?person_full_name=山田太郎` | 提出者名で絞った一覧（`/bills` の `person_full_name` と同じ照合規則） |
+| `GET` | `/questions/{source_id}` | 指定した質問主意書（`/questions` と同じ項目形） |
 
 会期で議案を列挙するときは **`/diet-sessions/{number}/bills`**、議案を `source_id` で参照するときは **`/bills/...`** とパスを分けている。
 
@@ -148,5 +152,26 @@
 | `document_url` | `string` | 本文ドキュメントの URL |
 | `content_text` | `string \| null` | HTML から抽出・整形した本文 |
 | `source_url` | `string` | 本文情報一覧ページの URL |
+| `fetched_at` | `string` | 取得日時。ISO 8601 形式 |
+
+## `Question`
+
+`/questions` と `/questions/{source_id}` で返す質問主意書。
+
+| 項目 | 型 | 説明 |
+| --- | --- | --- |
+| `source_id` | `string` | `院別-国会回次-提出番号` 形式の識別子 |
+| `chamber` | `string` | 院別。`shugiin` または `sangiin` |
+| `session_number` | `integer` | 国会回次 |
+| `number` | `integer` | 提出番号 |
+| `title` | `string` | 件名 |
+| `submitter` | `string \| null` | 提出者。会議録の発言者と同様、`clean_kokkai_speaker_name` 相当の処理（先頭の ○・〇、括弧内表記、末尾の敬称除去など）で正規化する。取得できない場合は `null` |
+| `status` | `string \| null` | 経過・状態（主に衆議院で取得） |
+| `details_url` | `string \| null` | 経過/詳細ページ URL |
+| `question_url` | `string \| null` | 質問本文（HTML）URL |
+| `answer_url` | `string \| null` | 答弁本文（HTML）URL |
+| `question_text` | `string \| null` | 質問本文（HTML から抽出・整形。未取得や空のときは `null`） |
+| `answer_text` | `string \| null` | 答弁本文（HTML から抽出・整形） |
+| `source_url` | `string` | 一覧ページの取得元 URL |
 | `fetched_at` | `string` | 取得日時。ISO 8601 形式 |
 
