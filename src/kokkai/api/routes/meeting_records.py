@@ -9,10 +9,29 @@ from kokkai.repositories import meeting_records
 router = APIRouter(prefix="/meeting-records", tags=["meeting-records"])
 
 
+@router.get("/speeches")
+def list_meeting_speeches_by_speaker(
+    speaker_full_name: str = Query(..., description="発言者のフルネーム（空白は無視してキー化し、DB と完全一致）"),
+    session_number: int | None = Query(default=None, description="国会回次"),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> list[dict[str, object]]:
+    with session_scope() as session:
+        return meeting_records.list_speeches_by_speaker_full_name(
+            session,
+            speaker_full_name=speaker_full_name,
+            session_number=session_number,
+            limit=limit,
+        )
+
+
 @router.get("")
 def list_meeting_records(
     session_number: int | None = Query(default=None, description="国会回次"),
     name_of_meeting: str | None = Query(default=None, description="会議名（完全一致）"),
+    speaker_full_name: str | None = Query(
+        default=None,
+        description="会議の発言者一覧（speakers_json）に含まれる人物のフルネーム（空白除去後の完全一致）",
+    ),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[dict[str, object]]:
     with session_scope() as session:
@@ -20,6 +39,7 @@ def list_meeting_records(
             session,
             session_number=session_number,
             name_of_meeting=name_of_meeting,
+            speaker_full_name=speaker_full_name,
             limit=limit,
         )
 

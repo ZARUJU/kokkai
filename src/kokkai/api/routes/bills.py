@@ -12,10 +12,19 @@ router = APIRouter(prefix="/bills", tags=["bills"])
 @router.get("")
 def list_bills(
     category: str | None = Query(default=None, description="議案種別。例: 衆法, 参法, 閣法, 予算, 条約"),
+    person_full_name: str | None = Query(
+        default=None,
+        description="議案情報の提出者・賛成者などに登場する人物のフルネーム（空白除去後の完全一致）",
+    ),
 ) -> list[dict[str, object]]:
     """全会期をまたいだ議案の一覧。国会回次で絞る場合は GET /diet-sessions/{number}/bills を使う。"""
     with session_scope() as session:
-        return bills.list_all(session, session_number=None, category=category)
+        return bills.list_all(
+            session,
+            session_number=None,
+            category=category,
+            person_full_name=person_full_name,
+        )
 
 
 @router.get("/{source_id}")

@@ -6,6 +6,11 @@ def normalize_spaces(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("\u3000", " ")).strip()
 
 
+def compact_person_full_name(value: str) -> str:
+    """人物フルネームの比較用キー。姓・名の間を含め空白類をすべて除去する。"""
+    return re.sub(r"\s+", "", value.replace("\u3000", "")).strip()
+
+
 def parse_days(value: str) -> int | None:
     match = re.search(r"\d+", normalize_spaces(value))
     return int(match.group(0)) if match else None

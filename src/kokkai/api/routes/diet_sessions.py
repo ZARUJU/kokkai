@@ -20,10 +20,19 @@ def list_diet_sessions() -> list[dict[str, object]]:
 def list_bills_for_diet_session(
     number: int,
     category: str | None = Query(default=None, description="議案種別。例: 衆法, 参法, 閣法, 予算, 条約"),
+    person_full_name: str | None = Query(
+        default=None,
+        description="議案情報の提出者・賛成者などに登場する人物のフルネーム（空白除去後の完全一致）",
+    ),
 ) -> list[dict[str, object]]:
     """指定した国会回次の衆議院議案一覧ページに相当する議案の一覧。"""
     with session_scope() as session:
-        return bills_repository.list_all(session, session_number=number, category=category)
+        return bills_repository.list_all(
+            session,
+            session_number=number,
+            category=category,
+            person_full_name=person_full_name,
+        )
 
 
 @router.get("/{number}")

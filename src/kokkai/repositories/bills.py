@@ -17,6 +17,42 @@ from kokkai.models.bill import canonical_key_for_bill
 from kokkai.models.bill import BillProgressItemModel
 from kokkai.models.bill import BillTextDocument
 from kokkai.models.bill import BillTextDocumentModel
+from kokkai.ingest.parsers.common import compact_person_full_name
+
+
+_PERSON_MATCH_PROGRESS_NAMES: frozenset[str] = frozenset(
+    {
+        "議案提出者一覧",
+        "議案提出の賛成者",
+        "議案提出者",
+    }
+)
+
+
+def _bill_source_ids_for_person_compact(session: Session, norm: str) -> set[str]:
+    if not norm:
+        return set()
+    rows = session.scalars(
+        select(BillProgressItemModel).where(
+            BillProgressItemModel.name.in_(_PERSON_MATCH_PROGRESS_NAMES),
+            BillProgressItemModel.value.isnot(None),
+        )
+    ).all()
+    out: set[str] = set()
+    for row in rows:
+        candidates: list[str] = []
+        if row.name in ("議案提出者一覧", "議案提出の賛成者"):
+            candidates.extend(_split_person_values(row.value))
+        elif row.name == "議案提出者":
+            summary = _parse_submitter_summary(row.value, [])
+            rep = summary.get("representative")
+            if isinstance(rep, str):
+                candidates.append(rep)
+        for person in candidates:
+            if compact_person_full_name(person) == norm:
+                out.add(row.bill_source_id)
+                break
+    return out
 
 
 def upsert_many(session: Session, bills: list[Bill], source_url: str) -> None:
@@ -96,8 +132,17 @@ def list_all(
     session: Session,
     session_number: int | None = None,
     category: str | None = None,
+    person_full_name: str | None = None,
 ) -> list[dict[str, object]]:
     statement = select(BillModel)
+    if person_full_name and person_full_name.strip():
+        norm = compact_person_full_name(person_full_name)
+        if not norm:
+            return []
+        person_ids = _bill_source_ids_for_person_compact(session, norm)
+        if not person_ids:
+            return []
+        statement = statement.where(BillModel.source_id.in_(person_ids))
     if session_number is not None:
         listed_in_session = exists(
             select(1).where(

@@ -4,6 +4,8 @@ from datetime import UTC
 from datetime import datetime
 
 from sqlalchemy import delete
+from sqlalchemy import exists
+from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -16,6 +18,7 @@ from kokkai.models.meeting_record import MeetingSpeech
 from kokkai.models.meeting_record import MeetingSpeechModel
 from kokkai.models.meeting_record import MeetingTopic
 from kokkai.models.meeting_record import MeetingTopicModel
+from kokkai.ingest.parsers.common import compact_person_full_name
 from kokkai.ingest.parsers.common import normalize_spaces
 
 
@@ -157,6 +160,13 @@ def _encode_speakers_json(speakers: list[str]) -> str:
     return json.dumps(speakers, ensure_ascii=False, separators=(",", ":"))
 
 
+def _sqlite_compact_person_column(column):
+    x = column
+    for ch in ("\u3000", "\t", "\n", "\r", "\f", "\v", " "):
+        x = func.replace(x, ch, "")
+    return x
+
+
 def _decode_speakers_json(raw: str | None) -> list[str]:
     if not raw or not raw.strip():
         return []
@@ -269,6 +279,7 @@ def list_meetings(
     session: Session,
     session_number: int | None = None,
     name_of_meeting: str | None = None,
+    speaker_full_name: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, object]]:
     statement = select(MeetingRecordModel)
@@ -276,6 +287,18 @@ def list_meetings(
         statement = statement.where(MeetingRecordModel.session == session_number)
     if name_of_meeting:
         statement = statement.where(MeetingRecordModel.name_of_meeting == name_of_meeting)
+    if speaker_full_name and speaker_full_name.strip():
+        norm = compact_person_full_name(speaker_full_name)
+        if not norm:
+            return []
+        j_table = func.json_each(MeetingRecordModel.speakers_json).table_valued("value").alias("j")
+        statement = statement.where(
+            exists(
+                select(1).select_from(j_table).where(
+                    _sqlite_compact_person_column(j_table.c.value) == norm,
+                )
+            )
+        )
     statement = statement.order_by(MeetingRecordModel.meeting_date.desc(), MeetingRecordModel.issue_id).limit(limit)
     rows = session.scalars(statement).all()
     return [meeting_to_dict(row) for row in rows]
@@ -305,6 +328,56 @@ def list_topics(session: Session, issue_id: str) -> list[dict[str, object]]:
 def count_speeches(session: Session, issue_id: str) -> int:
     rows = session.scalars(select(MeetingSpeechModel).where(MeetingSpeechModel.issue_id == issue_id)).all()
     return len(rows)
+
+
+def list_speeches_by_speaker_full_name(
+    session: Session,
+    speaker_full_name: str,
+    session_number: int | None = None,
+    limit: int = 500,
+) -> list[dict[str, object]]:
+    norm = compact_person_full_name(speaker_full_name)
+    if not norm:
+        return []
+
+    statement = (
+        select(MeetingSpeechModel)
+        .join(MeetingRecordModel, MeetingSpeechModel.issue_id == MeetingRecordModel.issue_id)
+        .where(
+            MeetingSpeechModel.speaker.isnot(None),
+            _sqlite_compact_person_column(MeetingSpeechModel.speaker) == norm,
+        )
+    )
+    if session_number is not None:
+        statement = statement.where(MeetingRecordModel.session == session_number)
+    statement = statement.order_by(
+        MeetingRecordModel.meeting_date.desc(),
+        MeetingSpeechModel.issue_id,
+        MeetingSpeechModel.speech_order,
+    ).limit(limit)
+    rows = session.scalars(statement).all()
+    return [speech_to_dict(row) for row in rows]
+
+
+def speech_to_dict(row: MeetingSpeechModel) -> dict[str, object]:
+    rc = _utc(row.record_create_time)
+    ru = _utc(row.record_update_time)
+
+    return {
+        "speech_id": row.speech_id,
+        "issue_id": row.issue_id,
+        "speech_order": row.speech_order,
+        "speaker": row.speaker,
+        "speaker_yomi": row.speaker_yomi,
+        "speaker_group": row.speaker_group,
+        "speaker_position": row.speaker_position,
+        "speaker_role": row.speaker_role,
+        "speech": row.speech,
+        "start_page": row.start_page,
+        "speech_url": row.speech_url,
+        "record_create_time": rc.isoformat() if rc else None,
+        "record_update_time": ru.isoformat() if ru else None,
+    }
 
 
 def meeting_to_dict(row: MeetingRecordModel) -> dict[str, object]:
