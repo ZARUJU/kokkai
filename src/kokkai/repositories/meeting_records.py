@@ -238,7 +238,6 @@ def upsert_meeting(
                 "issue_id": item.issue_id,
                 "topic_order": item.topic_order,
                 "label": item.label,
-                "bill_source_ids_json": _encode_bill_source_ids_json(list(item.bill_source_ids)),
             }
             for item in topics
         ]
@@ -383,5 +382,4 @@ def topic_to_dict(row: MeetingTopicModel) -> dict[str, object]:
         "issue_id": row.issue_id,
         "topic_order": row.topic_order,
         "label": row.label,
-        "bill_source_ids": _decode_json_str_list(row.bill_source_ids_json),
     }

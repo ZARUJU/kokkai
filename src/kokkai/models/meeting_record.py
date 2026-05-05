@@ -54,7 +54,6 @@ class MeetingTopic:
     issue_id: str
     topic_order: int
     label: str
-    bill_source_ids: tuple[str, ...]
 
 
 class MeetingRecordModel(Base):
@@ -106,4 +105,3 @@ class MeetingTopicModel(Base):
     issue_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     topic_order: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    bill_source_ids_json: Mapped[str] = mapped_column(Text, nullable=False)

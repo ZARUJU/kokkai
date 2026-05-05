@@ -4,7 +4,6 @@ import re
 
 from sqlalchemy import delete
 from sqlalchemy import exists
-from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
@@ -155,12 +154,7 @@ def list_all(
                 BillListingSessionModel.session_number == session_number,
             )
         )
-        statement = statement.where(
-            or_(
-                listed_in_session,
-                BillModel.session_number == session_number,
-            )
-        )
+        statement = statement.where(listed_in_session)
     if category is not None:
         statement = statement.where(BillModel.category == category)
 
@@ -429,17 +423,7 @@ def _attach_listing_sessions(session: Session, bill_dicts: list[dict[str, object
 
     for d in bill_dicts:
         sid = str(d["source_id"])
-        entries = by_bill.get(sid)
-        if not entries:
-            entries = [
-                {
-                    "session_number": d["session_number"],
-                    "status": d["status"],
-                    "source_url": d["source_url"],
-                    "fetched_at": d["fetched_at"],
-                }
-            ]
-        d["listing_sessions"] = entries
+        d["listing_sessions"] = by_bill.get(sid, [])
 
 
 def progress_item_to_dict(row: BillProgressItemModel) -> dict[str, object]:

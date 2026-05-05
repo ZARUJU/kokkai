@@ -54,6 +54,7 @@
   - 取得元 URL と取得日時を各レコードに保持する。
   - 同一の経過ページ ID（`source_id`）が複数の国会回次の議案一覧に載る場合があるため、会期ごとの掲載行は `bill_listing_sessions` テーブルに `(bill_source_id, session_number)` 単位で保持する。
   - 番号付き議案は提出回次・種別・番号から求める `canonical_key` を `bills` に保持し、経過 URL が会期で分かれた別レコードを API 上で関連付け可能にする。
+  - `GET /diet-sessions/{number}/bills` および会期で絞ったリポジトリ検索は、**当該会期の `bill_listing_sessions` に行がある議案のみ**を対象とする。`GET /bills` の全会期一覧とは異なり、`bills.session_number` だけが一致しても掲載行が無ければ会期別一覧には出ない。API の `Bill.listing_sessions` も同テーブル由来であり、行が無ければ空配列。
 - 備考:
   - 衆議院と参議院で同内容の情報が提供されているため、衆議院のページから取得する。
   - ページの文字コードは Shift_JIS。
@@ -78,7 +79,7 @@
 - 主キー:
   - 会議録: `issue_id`（`bill_source_ids_json`: 当会議録に審議が載る議案の `source_id` の JSON 配列）
   - 発言: `speech_id`
-  - 議題行: `{issue_id}:topic:{順序}`（`bill_source_ids_json` は互換のため残すが空配列）
+  - 議題行: `{issue_id}:topic:{順序}`（`meeting_topics`。ラベル・順序のみで、議案 ID は会議録ヘッダにのみ保持）
 - 更新方針:
   - 対象国会回次は既定では `shugiin_sessions` で保存した番号のうち新しい方から最大 2 件の範囲（API の `sessionFrom` にその最小、`sessionTo` にその最大）とし、`meeting_list` で `issue_id` をページング取得し、各 ID を `meeting` で再取得して upsert する。
   - `scripts/ingest.py` の `--session`、または環境変数 `KOKKAI_MEETING_SESSIONS`（カンマ区切り）で対象回次を列挙すると、その **最小〜最大** が API の `sessionFrom`〜`sessionTo` になる。**CLI が最優先**。いずれも無い場合は前述の DB 既定に従う。
@@ -86,7 +87,7 @@
   - 公開済み会議録は不変とみなし、DB に同一 `issue_id` が既にある場合はデフォルトで API 再取得を省略する（議案一覧 ingest を後から足した場合などで会議録と議案の紐づけをやり直したいときは `KOKKAI_MEETING_REINGEST` を真に設定して再取得する）。
   - 公式利用条件に従い、リクエスト間に数秒空ける。
 - 保存方針:
-  - 会議録ヘッダ・抽出メタデータ・発言全文・議題・発言者一覧を SQLite に保存する。
+  - 会議録ヘッダ・抽出メタデータ・発言全文・議題（ラベルのみ）・発言者一覧を SQLite に保存する。
   - API リクエスト URL（例: `.../api/meeting?issueID=...`）と取得日時は `meeting_records` のみに保持する（発言・議題・発言者一覧の子行には重複させない）。
   - `KOKKAI_MEETING_INGEST_LIMIT` を設定すると取得件数を上限で打ち切れる（検証用）。
   - `KOKKAI_MEETING_REINGEST` を `1` / `true` / `yes` / `on` のいずれかにすると、既存 `issue_id` も含めて再取得する。

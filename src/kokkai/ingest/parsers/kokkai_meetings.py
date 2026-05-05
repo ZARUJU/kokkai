@@ -370,7 +370,6 @@ def build_topics(issue_id: str, labels: list[str]) -> list[MeetingTopic]:
                 issue_id=issue_id,
                 topic_order=order,
                 label=label,
-                bill_source_ids=(),
             )
         )
     return topics

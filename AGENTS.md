@@ -38,7 +38,7 @@
 - 取得結果の共通型は `src/kokkai/ingest/documents.py` の `SourceDocument` を使う。
 - pipeline は `src/kokkai/ingest/pipeline.py` の `IngestRunContext` を受け取り `PipelineResult` を返す。
 - 和暦変換や空白正規化など複数 parser で使う処理は `src/kokkai/ingest/parsers/common.py` に寄せる。
-- DB テーブル作成は `src/kokkai/db/schema.py` の `create_all()` を使う。
+- DB テーブル作成は `src/kokkai/db/schema.py` の `create_all()` を使う（モデル定義に基づく `CREATE TABLE` のみ。旧 DB 向けの自動 ALTER は行わない）。
 
 ## 確認
 

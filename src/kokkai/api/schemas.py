@@ -178,7 +178,6 @@ class MeetingTopicOut(BaseModel):
     issue_id: str
     topic_order: int
     label: str
-    bill_source_ids: list[str]
 
 
 class MeetingRecordDetailOut(MeetingRecordListOut):

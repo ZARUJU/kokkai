@@ -93,6 +93,9 @@ uv run python api.py
 | `GET`    | `/questions?chamber=shugiin&session_number=221` | 院別・会期で絞った質問主意書一覧 |
 | `GET`    | `/questions?person_full_name=竹詰仁` | 提出者フルネームで絞った質問主意書一覧（議案一覧と同一規則） |
 | `GET`    | `/questions/{source_id}` | 上記と同じ項目の単票取得（`source_id` 指定） |
+| `GET`    | `/meeting-records` | 国会会議録一覧 |
+| `GET`    | `/meeting-records/speeches` | 発言者名で会議録発言を検索（クエリ `speaker_full_name` 必須） |
+| `GET`    | `/meeting-records/{issue_id}` | 会議録詳細（議題・発言数など） |
 
 API のレスポンス項目と型は [docs/api.md](docs/api.md) に記載します。
 

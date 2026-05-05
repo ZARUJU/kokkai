@@ -131,7 +131,7 @@ def submitter_compact_key(raw_submitter: str | None) -> str | None:
 
 
 def _normalized_person_name(value: str | None) -> str | None:
-    """会議録 speaker と同様の敬称除去。DB に旧形式が残っても一覧・詳細で揃える。"""
+    """会議録 speaker と同様の敬称除去。"""
     if not value:
         return None
     text = normalize_spaces(value)

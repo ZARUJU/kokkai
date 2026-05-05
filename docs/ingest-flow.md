@@ -8,7 +8,7 @@
 
 ## 2. ドメインモデルと DB モデルを定義する
 
-`src/kokkai/models/` に、解析後に扱うドメインモデルと SQLAlchemy モデルを置きます。
+`src/kokkai/models/` に、解析後に扱うドメインモデルと SQLAlchemy モデルを置きます。テーブル作成は `src/kokkai/db/schema.py` の `create_all()` が SQLAlchemy のモデル定義から行うのみで、**既存 SQLite に対する自動 ALTER やデータ移行は行わない**。スキーマ変更後は DB を作り直すか、手動でマイグレーションする。
 
 ```text
 src/kokkai/models/<data_name>.py
