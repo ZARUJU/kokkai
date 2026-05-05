@@ -50,3 +50,12 @@ def _apply_sqlite_compat_migrations() -> None:
                 conn.execute(text("ALTER TABLE questions ADD COLUMN question_text TEXT"))
             if "answer_text" not in question_cols:
                 conn.execute(text("ALTER TABLE questions ADD COLUMN answer_text TEXT"))
+
+        meeting_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(meeting_records)"))}
+        if meeting_cols and "bill_source_ids_json" not in meeting_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE meeting_records ADD COLUMN bill_source_ids_json TEXT "
+                    "NOT NULL DEFAULT '[]'"
+                )
+            )

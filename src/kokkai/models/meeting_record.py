@@ -75,6 +75,7 @@ class MeetingRecordModel(Base):
     meeting_end_hhmm: Mapped[str | None] = mapped_column(String)
     header_info_text: Mapped[str | None] = mapped_column(Text)
     speakers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    bill_source_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
     source_url: Mapped[str] = mapped_column(String, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

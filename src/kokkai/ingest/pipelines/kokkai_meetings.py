@@ -1,5 +1,8 @@
 import logging
 import os
+from typing import Any
+
+from playwright.sync_api import sync_playwright
 
 from kokkai.db.engine import session_scope
 from kokkai.db.schema import create_all
@@ -16,6 +19,19 @@ DEFAULT_SESSION_FALLBACK_FROM = 221
 DEFAULT_SESSION_FALLBACK_TO = 221
 
 _LOG = logging.getLogger(__name__)
+
+
+def _stop_playwright(*, playwright, ndl_browser) -> None:
+    if ndl_browser is not None:
+        try:
+            ndl_browser.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if playwright is not None:
+        try:
+            playwright.stop()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _resolve_session_range(context: IngestRunContext) -> tuple[int, int, str]:
@@ -71,55 +87,108 @@ def run(context: IngestRunContext) -> PipelineResult:
     )
     _LOG.info("国会会議録: meeting_list から issue_id を列挙して取得します")
 
-    stopped_for_limit = False
-    for issue_id in source.iter_meeting_issue_ids(session_from, session_to):
-        if limit is not None and total >= limit:
-            stopped_for_limit = True
-            break
+    playwright = None
+    ndl_browser = None
+    ndl_page = None
+    min_ids_cache: dict[str, list[str]] = {}
+    session_bills_cache: dict[int, list[Any]] = {}
+    try:
+        playwright = sync_playwright().start()
+        ndl_browser = playwright.chromium.launch(headless=True)
+        ndl_page = ndl_browser.new_page()
+    except Exception as exc:  # noqa: BLE001
+        _LOG.warning("国会会議録: Playwright を起動できません（議案紐づけは行いません）: %s", exc)
+        _stop_playwright(playwright=playwright, ndl_browser=ndl_browser)
+        playwright = None
+        ndl_browser = None
+        ndl_page = None
 
-        if not reingest:
-            with session_scope() as session:
-                if meeting_repository.meeting_issue_exists(session, issue_id):
-                    skipped_existing += 1
-                    _LOG.debug("国会会議録: issue_id=%s は DB に既存のためスキップ", issue_id)
-                    continue
-
-        _LOG.debug("国会会議録: issue_id=%s を meeting API で取得", issue_id)
-        payload = source.fetch_meeting_page({"issueID": issue_id, "maximumRecords": 1, "recordPacking": "json"})
-        source.ensure_meeting_response(payload)
-        records = payload.get("meetingRecord") or []
-        if not isinstance(records, list) or not records:
-            skipped_no_record += 1
-            _LOG.debug("国会会議録: issue_id=%s は meeting 応答にレコード無し", issue_id)
-            continue
-        raw = records[0]
-        if not isinstance(raw, dict):
-            skipped_no_record += 1
-            continue
-
+    if ndl_page is not None:
         try:
-            record, speeches, topic_labels = parser.parse_meeting_bundle(raw)
-        except ValueError as exc:
-            skipped_parse_error += 1
-            _LOG.warning("国会会議録: issue_id=%s をスキップ（パース不可: %s）", issue_id, exc)
-            continue
-        source_url = f"{source.BASE_URL}/meeting?issueID={issue_id}&maximumRecords=1&recordPacking=json"
+            with session_scope() as session:
+                n_fetch, n_rows = meeting_repository.prefetch_ndl_min_ids_for_session_range(
+                    session,
+                    session_from,
+                    session_to,
+                    ndl_page,
+                    min_ids_cache,
+                    session_bills_cache,
+                )
+            _LOG.info(
+                "国会会議録: NDL min_id プリフェッチ完了（走査した議案行=%s 新規 billId 取得=%s）",
+                n_rows,
+                n_fetch,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _LOG.warning("国会会議録: NDL プリフェッチに失敗（会議単位でフォールバック取得）: %s", exc)
 
-        with session_scope() as session:
-            bills_per_label = [
-                meeting_repository.resolve_bill_source_ids(session, record.session, label) for label in topic_labels
-            ]
-            topics = parser.build_topics(record.issue_id, topic_labels, bills_per_label)
-            speakers = parser.build_speaker_names(speeches)
-            meeting_repository.upsert_meeting(session, record, speeches, topics, speakers, source_url)
+    stopped_for_limit = False
+    try:
+        for issue_id in source.iter_meeting_issue_ids(session_from, session_to):
+            if limit is not None and total >= limit:
+                stopped_for_limit = True
+                break
 
-        total += 1
-        _LOG.debug(
-            "国会会議録: issue_id=%s を保存（session=%s meeting=%s）",
-            issue_id,
-            record.session,
-            record.name_of_meeting,
-        )
+            if not reingest:
+                with session_scope() as session:
+                    if meeting_repository.meeting_issue_exists(session, issue_id):
+                        skipped_existing += 1
+                        _LOG.debug("国会会議録: issue_id=%s は DB に既存のためスキップ", issue_id)
+                        continue
+
+            _LOG.debug("国会会議録: issue_id=%s を meeting API で取得", issue_id)
+            payload = source.fetch_meeting_page({"issueID": issue_id, "maximumRecords": 1, "recordPacking": "json"})
+            source.ensure_meeting_response(payload)
+            records = payload.get("meetingRecord") or []
+            if not isinstance(records, list) or not records:
+                skipped_no_record += 1
+                _LOG.debug("国会会議録: issue_id=%s は meeting 応答にレコード無し", issue_id)
+                continue
+            raw = records[0]
+            if not isinstance(raw, dict):
+                skipped_no_record += 1
+                continue
+
+            try:
+                record, speeches, topic_labels = parser.parse_meeting_bundle(raw)
+            except ValueError as exc:
+                skipped_parse_error += 1
+                _LOG.warning("国会会議録: issue_id=%s をスキップ（パース不可: %s）", issue_id, exc)
+                continue
+            source_url = f"{source.BASE_URL}/meeting?issueID={issue_id}&maximumRecords=1&recordPacking=json"
+
+            with session_scope() as session:
+                meeting_bills: list[str] = []
+                if ndl_page is not None:
+                    meeting_bills = meeting_repository.resolve_bill_source_ids_for_meeting_ndl(
+                        session,
+                        record.issue_id,
+                        record.session,
+                        ndl_page,
+                        min_ids_cache,
+                        session_bills_cache,
+                    )
+                topics = parser.build_topics(record.issue_id, topic_labels)
+                speakers = parser.build_speaker_names(speeches)
+                meeting_repository.upsert_meeting(
+                    session,
+                    record,
+                    speeches,
+                    topics,
+                    speakers,
+                    source_url,
+                    meeting_bills,
+                )
+
+            total += 1
+            _LOG.debug(
+                "国会会議録: issue_id=%s を保存（session=%s meeting=%s）",
+                issue_id,
+                record.session,
+                record.name_of_meeting,
+            )
+    finally:
+        _stop_playwright(playwright=playwright, ndl_browser=ndl_browser)
 
     _LOG.info(
         "国会会議録: 完了 ingested=%s skipped_existing=%s skipped_empty_response=%s skipped_parse_error=%s stopped_for_limit=%s",

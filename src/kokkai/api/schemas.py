@@ -166,6 +166,7 @@ class MeetingRecordListOut(BaseModel):
     meeting_start_hhmm: str | None
     meeting_end_hhmm: str | None
     speakers: list[str]
+    bill_source_ids: list[str]
     source_url: str
     fetched_at: str
 

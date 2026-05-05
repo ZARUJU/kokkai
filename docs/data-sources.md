@@ -73,16 +73,17 @@
   - 同テキストから抽出した取り扱い議題一覧
   - 全発言の `speaker` から得た発言者名の配列（敬称除去・`会議録情報` 除外、登場順で重複を除く。`meeting_records.speakers_json` に JSON 配列で保存）
 - 派生・リンク:
-  - 議題が法律案で `bills` と題名が一致する場合、`bill_source_ids`（`string[]`）で複数議案を紐づけ可能（議題本文を断片化して議案ごとに照合）
+  - 当該国会回次の `bills` 各行について、`submitted_session_number`・`category`（閣法/衆法/参法/条約）・`number` から日本法令索引の `billId` を組み立てる。`https://kokkai.ndl.go.jp/#/result?billId=` を Playwright で開き、検索 API の `min_id`（= 会議録 `issueID`）に当該会議録が含まれる議案だけを `meeting_records.bill_source_ids_json` に保存する（議題行とは紐づけない）
+  - 最適化: `sessionFrom`〜`sessionTo` の会期について、議案行を一度だけ走査し `billId` 単位で `min_id` 一覧を先にキャッシュしてから会議録を保存する（会議数×議案数回の NDL 取得を避ける）。2件目以降の `billId` 取得ではトップへの往復と localStorage クリアを省略する
 - 主キー:
-  - 会議録: `issue_id`
+  - 会議録: `issue_id`（`bill_source_ids_json`: 当会議録に審議が載る議案の `source_id` の JSON 配列）
   - 発言: `speech_id`
-  - 議題行: `{issue_id}:topic:{順序}`（同一行に `bill_source_ids_json`: 紐づく議案 `source_id` の JSON 配列）
+  - 議題行: `{issue_id}:topic:{順序}`（`bill_source_ids_json` は互換のため残すが空配列）
 - 更新方針:
   - 対象国会回次は既定では `shugiin_sessions` で保存した番号のうち新しい方から最大 2 件の範囲（API の `sessionFrom` にその最小、`sessionTo` にその最大）とし、`meeting_list` で `issue_id` をページング取得し、各 ID を `meeting` で再取得して upsert する。
   - `scripts/ingest.py` の `--session`、または環境変数 `KOKKAI_MEETING_SESSIONS`（カンマ区切り）で対象回次を列挙すると、その **最小〜最大** が API の `sessionFrom`〜`sessionTo` になる。**CLI が最優先**。いずれも無い場合は前述の DB 既定に従う。
   - 会期一覧が未投入の DB ではフォールバックとして単一会期（コード内既定）に縮れるため、本番の定期実行では先に `shugiin_sessions` を走らせることが望ましい。
-  - 公開済み会議録は不変とみなし、DB に同一 `issue_id` が既にある場合はデフォルトで API 再取得を省略する（議案 ingest を後から足した場合などで議題紐付けをやり直したいときは `KOKKAI_MEETING_REINGEST` を真に設定して再取得する）。
+  - 公開済み会議録は不変とみなし、DB に同一 `issue_id` が既にある場合はデフォルトで API 再取得を省略する（議案一覧 ingest を後から足した場合などで会議録と議案の紐づけをやり直したいときは `KOKKAI_MEETING_REINGEST` を真に設定して再取得する）。
   - 公式利用条件に従い、リクエスト間に数秒空ける。
 - 保存方針:
   - 会議録ヘッダ・抽出メタデータ・発言全文・議題・発言者一覧を SQLite に保存する。

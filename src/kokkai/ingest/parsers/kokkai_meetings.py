@@ -361,16 +361,16 @@ def parse_meeting_bundle(raw: dict[str, Any]) -> tuple[MeetingRecord, list[Meeti
     return record, parsed_speeches, topics
 
 
-def build_topics(issue_id: str, labels: list[str], bills_per_label: list[list[str]]) -> list[MeetingTopic]:
+def build_topics(issue_id: str, labels: list[str]) -> list[MeetingTopic]:
     topics: list[MeetingTopic] = []
-    for order, (label, bills) in enumerate(zip(labels, bills_per_label, strict=True)):
+    for order, label in enumerate(labels):
         topics.append(
             MeetingTopic(
                 source_id=f"{issue_id}:topic:{order}",
                 issue_id=issue_id,
                 topic_order=order,
                 label=label,
-                bill_source_ids=tuple(bills),
+                bill_source_ids=(),
             )
         )
     return topics

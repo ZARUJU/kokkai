@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import json
 import logging
-import re
+import time
 from datetime import UTC
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete
 from sqlalchemy import exists
@@ -12,6 +15,9 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
+from kokkai.ingest.parsers.ndl_bill_id import ndl_bill_id_from_bill_row
+from kokkai.ingest.sources.kokkai_api import REQUEST_INTERVAL_SEC
+from kokkai.ingest.sources.kokkai_ndl_playwright import fetch_min_ids_for_bill_id
 from kokkai.models.bill import BillModel
 from kokkai.models.meeting_record import MeetingRecord
 from kokkai.models.meeting_record import MeetingRecordModel
@@ -23,61 +29,10 @@ from kokkai.ingest.parsers.common import compact_person_full_name
 from kokkai.ingest.parsers.common import normalize_spaces
 from kokkai.ingest.parsers.common import optional_compact_person_query
 
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
+
 logger = logging.getLogger(__name__)
-
-
-def _normalize_for_bill_match(value: str) -> str:
-    text = normalize_spaces(value)
-    for token in (
-        "（内閣提出）",
-        "（衆法）",
-        "（参法）",
-        "（閣法）",
-        "（予算）",
-    ):
-        text = text.replace(token, "")
-    return text
-
-
-_PROC_TOPIC_SUFFIXES = (
-    "の趣旨説明並びに質疑",
-    "の趣旨説明及び質疑",
-    "の趣旨説明",
-    "並びに質疑",
-    "及び質疑",
-)
-
-
-def _bill_fragments_from_topic_label(topic_label: str) -> list[str]:
-    """読点・「及び」と 演説…並びに… の折り畳みで、議案名らしい断片を得る。"""
-    t = _normalize_for_bill_match(topic_label)
-    for suffix in sorted(_PROC_TOPIC_SUFFIXES, key=len, reverse=True):
-        if t.endswith(suffix):
-            t = t[: -len(suffix)].strip()
-            break
-    fragments: list[str] = []
-    seen: set[str] = set()
-    for piece in re.split(r"[、]|及び", t):
-        piece = normalize_spaces(piece).strip()
-        if "法律案" not in piece:
-            continue
-        if "並びに" in piece:
-            tail = piece.split("並びに")[-1].strip()
-            if "法律案" in tail:
-                piece = tail
-        if len(piece) >= 6 and piece not in seen:
-            seen.add(piece)
-            fragments.append(piece)
-    return fragments
-
-
-def _match_score_title(candidate: str, haystack: str) -> int:
-    """マッチ強度（長い一致を優先）。candidate=DB議題名、haystack=議題断片または全文。"""
-    if candidate in haystack:
-        return len(candidate)
-    if len(haystack) >= 12 and haystack in candidate:
-        return len(haystack)
-    return 0
 
 
 def _session_bill_rows(session: Session, session_number: int) -> list[BillModel]:
@@ -93,46 +48,68 @@ def _session_bill_rows(session: Session, session_number: int) -> list[BillModel]
     )
 
 
-def _best_bill_for_haystack(rows: list[BillModel], haystack: str) -> str | None:
-    if len(haystack) < 6:
-        return None
-    best_score = 0
-    best_id: str | None = None
-    for row in rows:
-        if "法律案" not in row.title:
-            continue
-        candidate = _normalize_for_bill_match(row.title)
-        if not candidate or len(candidate) < 6:
-            continue
-        score = _match_score_title(candidate, haystack)
-        if score > best_score:
-            best_score = score
-            best_id = row.source_id
-    if best_score < 8:
-        return None
-    return best_id
+def prefetch_ndl_min_ids_for_session_range(
+    session: Session,
+    session_from: int,
+    session_to: int,
+    page: Page,
+    min_ids_cache: dict[str, list[str]],
+    session_bills_cache: dict[int, list[BillModel]],
+) -> tuple[int, int]:
+    """会期範囲の bills を走査し、ユニークな billId ごとに min_id 一覧をキャッシュする。
+
+    戻り値は (新規取得した billId 数, 走査した議案行数)。
+    """
+    fetched = 0
+    considered = 0
+    seen_bill_id: set[str] = set()
+    for sn in range(session_from, session_to + 1):
+        rows = _session_bill_rows(session, sn)
+        session_bills_cache[sn] = rows
+        for row in rows:
+            considered += 1
+            bill_id = ndl_bill_id_from_bill_row(row.submitted_session_number, row.category, row.number)
+            if bill_id is None or bill_id in seen_bill_id:
+                continue
+            seen_bill_id.add(bill_id)
+            if bill_id not in min_ids_cache:
+                min_ids_cache[bill_id] = fetch_min_ids_for_bill_id(
+                    page,
+                    bill_id,
+                    reset_context=not min_ids_cache,
+                )
+                fetched += 1
+                time.sleep(REQUEST_INTERVAL_SEC)
+    return fetched, considered
 
 
-def resolve_bill_source_ids(session: Session, session_number: int, topic_label: str) -> list[str]:
-    """議題に含まれる法令案断片ごとに bills を照合し、重複のない source_id リストを返す。"""
-    if "法律案" not in topic_label:
-        return []
-
-    norm_topic = _normalize_for_bill_match(topic_label)
-    if len(norm_topic) < 4:
-        return []
-
-    rows = _session_bill_rows(session, session_number)
-    fragments = _bill_fragments_from_topic_label(topic_label)
-    haystacks = fragments if fragments else [norm_topic]
-
+def resolve_bill_source_ids_for_meeting_ndl(
+    session: Session,
+    issue_id: str,
+    session_number: int,
+    page: Page,
+    min_ids_cache: dict[str, list[str]],
+    session_bills_cache: dict[int, list[BillModel]],
+) -> list[str]:
+    """会議録の会期に該当する全議案を対象に billId を組み、min_id に issue_id が含まれる行だけ会議録に紐づける。"""
+    rows = session_bills_cache.get(session_number)
+    if rows is None:
+        rows = _session_bill_rows(session, session_number)
+        session_bills_cache[session_number] = rows
     out: list[str] = []
     seen: set[str] = set()
-    for haystack in haystacks:
-        bid = _best_bill_for_haystack(rows, haystack)
-        if bid and bid not in seen:
-            seen.add(bid)
-            out.append(bid)
+    for row in rows:
+        bill_id = ndl_bill_id_from_bill_row(row.submitted_session_number, row.category, row.number)
+        if bill_id is None:
+            continue
+        if bill_id not in min_ids_cache:
+            min_ids_cache[bill_id] = fetch_min_ids_for_bill_id(page, bill_id, reset_context=False)
+            time.sleep(REQUEST_INTERVAL_SEC)
+        if issue_id not in min_ids_cache[bill_id]:
+            continue
+        if row.source_id not in seen:
+            seen.add(row.source_id)
+            out.append(row.source_id)
     return out
 
 
@@ -179,8 +156,10 @@ def upsert_meeting(
     topics: list[MeetingTopic],
     speakers: list[str],
     source_url: str,
+    meeting_bill_source_ids: list[str] | None = None,
 ) -> None:
     fetched_at = datetime.now(UTC)
+    bills_json = _encode_bill_source_ids_json(meeting_bill_source_ids or [])
     meeting_values = {
         "issue_id": record.issue_id,
         "session": record.session,
@@ -197,6 +176,7 @@ def upsert_meeting(
         "meeting_end_hhmm": record.meeting_end_hhmm,
         "header_info_text": record.header_info_text,
         "speakers_json": _encode_speakers_json(speakers),
+        "bill_source_ids_json": bills_json,
         "source_url": source_url,
         "fetched_at": fetched_at,
     }
@@ -220,6 +200,7 @@ def upsert_meeting(
             "meeting_end_hhmm": excluded.meeting_end_hhmm,
             "header_info_text": excluded.header_info_text,
             "speakers_json": excluded.speakers_json,
+            "bill_source_ids_json": excluded.bill_source_ids_json,
             "source_url": excluded.source_url,
             "fetched_at": excluded.fetched_at,
         },
@@ -390,6 +371,7 @@ def meeting_to_dict(row: MeetingRecordModel) -> dict[str, object]:
         "meeting_start_hhmm": row.meeting_start_hhmm,
         "meeting_end_hhmm": row.meeting_end_hhmm,
         "speakers": _decode_json_str_list(row.speakers_json),
+        "bill_source_ids": _decode_json_str_list(row.bill_source_ids_json),
         "source_url": row.source_url,
         "fetched_at": fetched_at.isoformat(),
     }
